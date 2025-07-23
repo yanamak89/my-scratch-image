@@ -1,0 +1,73 @@
+name: image-ci
+
+# when we should start running this workflow
+# This GitHub Actions workflow builds and pushes Docker images for the Node.js API
+on:
+  push:
+    branches:
+      - 'github-action'
+    tags:
+      - 'v*'
+
+# We define the jobs that will run in this workflow
+
+jobs:
+  build-tag-push:
+    # This job builds the Docker image, tags it, and pushes it to Docker Hub
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout the code from the repository
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      # Set up Node.js environment
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+            images: |
+              yanamak89/my-scratch-image
+          
+          # Tags for the Node.js API image
+          tags: |
+            type=raw,value=latest
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value={{date 'YYYYMMDD'}}-{{sha}}
+
+  # Login to Docker Hub
+      #where to get secrets:
+        # Open your repository on GitHub  
+        # Go to "Settings" > "Secrets and variables" > "Actions"
+        # f.e. https://github.com/yanamak89/my-scratch-image/settings/secrets/actions
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+        # Build and push the Docker image for the Node.js API
+        # This step builds the Docker image using the Dockerfile located in the specified path
+        # and pushes it to Docker Hub with the tags defined in the previous step
+        
+      - name: Build and push
+        uses: docker/build-push-action@v4
+        with:
+          file: ./06-building-container-images/api-node/Dockerfile.8
+          context: ./05-example-web-application/api-node/
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+
+        # Run Trivy vulnerability scanner on the built image
+        # This step uses the Trivy action to scan the Docker image for vulnerabilities
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'yanamak89/my-scratch-image:latest'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL'
